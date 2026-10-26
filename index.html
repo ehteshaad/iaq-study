@@ -54,39 +54,53 @@ function sDetails(){
   clearInterval(t);const n=new Date();Object.assign(S,{pid,room,tp,code:$('#code').value.trim()||null,tz,started:n,dev_date:dDate(n),dev_time:dTime(n),dev_iso:iso(n)});sQ()};
 }
 // ---------- Questionnaire ----------
-const L=a=>a.map(x=>[x,x]),sc=(a,b)=>Array.from({length:b-a+1},(_,i)=>[a+i,String(a+i)]),YN=L(['Yes','No']);
-const FRQ=L(['Not at all','Slightly','Moderately','Very much','Extremely']),CHG=L(['Much worse','Slightly worse','No change','Slightly better','Much better']);
-const Q=[{s:'A. Sleep and recent activity'},
-{id:'q1_sleep_duration',t:'Approximately how long did you sleep last night?',o:L(['Less than 5 hours','5 to less than 6 hours','6 to less than 7 hours','7–8 hours','More than 8 hours'])},
-{id:'q2_caffeine_past_4h',t:'Have you consumed a caffeinated drink in the past four hours?',o:YN},
-{id:'q3_prev_class_immediate',t:'Did you attend another class immediately before this one?',o:YN},
-{id:'q4_prev_activity',t:'What were you doing immediately before entering this classroom?',o:L(['Attending another class','Walking or travelling','Sitting or resting','Studying or working','Other']),other:'Other'},
-{s:'B. Current subjective state'},
-{id:'q5_sleepiness_1_9',t:'How sleepy do you feel right now?',o:sc(1,9),lo:'1 = not sleepy',hi:'9 = extremely sleepy'},
-{id:'q6_mental_fatigue_0_10',t:'How mentally tired do you feel right now?',o:sc(0,10),lo:'0 = not at all',hi:'10 = extremely'},
-{id:'q7_concentration_0_10',t:'How well can you concentrate right now?',o:sc(0,10),lo:'0 = very poorly',hi:'10 = extremely well'},
-{s:'C. Perceived indoor air quality'},
-{id:'q8_air_freshness',t:'How would you describe the air in this classroom right now?',o:L(['Very fresh','Fresh','Neither fresh nor stuffy','Stuffy','Very stuffy'])},
-{id:'q9_prefer_fresher_air',t:'Would you prefer the air in this classroom to be fresher?',o:YN},
-{id:'q10_odour_noticeable',t:'How noticeable is any unpleasant or unusual smell?',o:L(['Not noticeable','Slightly noticeable','Moderately noticeable','Very noticeable','Extremely noticeable'])},
-{s:'D. Thermal sensation'},
-{id:'q11_thermal_sensation',t:'How do you feel about the temperature in this classroom?',o:[[-3,'−3 Cold'],[-2,'−2 Cool'],[-1,'−1 Slightly cool'],[0,'0 Neutral'],[1,'+1 Slightly warm'],[2,'+2 Warm'],[3,'+3 Hot']]},
-{s:'E. Environmental distraction'},
-{id:'q12_env_distraction',t:'How much is the classroom environment distracting you?',o:FRQ},
-{s:'F. Current affect'},
-{id:'q13_activation_1_9',t:'How activated or alert do you feel right now?',o:sc(1,9),lo:'1 = very low',hi:'9 = very high'},
-{id:'q14_valence_1_9',t:'How pleasant or unpleasant do you feel right now?',o:sc(1,9),lo:'1 = very unpleasant (5 = neutral)',hi:'9 = very pleasant'},
-{s:'G. After-class questions',post:1},
-{id:'q15_concentration_change',t:'Compared with before the class, how has your ability to concentrate changed?',o:CHG,post:1},
-{id:'q16_environment_change',t:'Compared with the beginning of class, how has the classroom environment changed overall?',o:CHG,post:1}];
+const L=a=>a.map(x=>[x,x]),sc=(a,b)=>Array.from({length:b-a+1},(_,i)=>[a+i,String(a+i)]),YN=L(['Yes','No']),YNS=L(['Yes','No','Not sure']);
+const FRQ=L(['Not at all','Slightly','Moderately','Very much','Extremely']);
+const CHG=[[1,'1 — Much worse'],[2,'2 — Slightly worse'],[3,'3 — No change'],[4,'4 — Slightly better'],[5,'5 — Much better']];
+const DIS=L(['Noise from people inside the classroom','Noise from outside the classroom','Glare or reflections from windows, lights or screens','Insufficient lighting or difficulty seeing the board or screen','Excessively bright lighting','Temperature that feels too hot or too cold','Stuffy air or unpleasant odour','Dry air or dust','Movement or visual activity in the room','Other','None of these']);
+// pre:1 = pre-class form only, post:1 = post-class form only, neither = both forms. Keys are identical in both forms.
+const Q=[{s:'Sleep and recent activity',pre:1},
+{id:'sleep_duration',pre:1,t:'Approximately how long did you sleep last night?',o:L(['Less than 5 hours','5 to less than 6 hours','6 to less than 7 hours','7–8 hours','More than 8 hours'])},
+{id:'caffeine_past_4h',pre:1,t:'Have you consumed tea, coffee, an energy drink, or another caffeinated drink in the past 4 hours?',o:YN},
+{id:'prev_class_immediate',pre:1,t:'Did you attend another class immediately before this one?',o:YN},
+{id:'prev_activity',pre:1,t:'What were you doing immediately before entering this classroom?',o:L(['Attending another class','Walking or travelling','Sitting or resting','Studying or working','Other']),other:'Other'},
+{s:'Current subjective state'},
+{id:'activation_1_9',t:'How activated or alert do you feel right now?',o:sc(1,9),lo:'1 = Very low activation (sleepy/sluggish)',hi:'9 = Very high activation (alert/energetic)'},
+{id:'valence_1_9',t:'How pleasant or unpleasant do you feel right now?',o:sc(1,9),lo:'1 = Very unpleasant · 5 = Neither pleasant nor unpleasant',hi:'9 = Very pleasant'},
+{id:'sleepiness_1_9',t:'How sleepy do you feel right now?',o:sc(1,9),lo:'1 = Not sleepy at all',hi:'9 = Extremely sleepy'},
+{id:'mental_fatigue_0_10',t:'How mentally tired do you feel right now?',o:sc(0,10),lo:'0 = Not at all mentally tired',hi:'10 = Extremely mentally tired'},
+{id:'concentration_0_10',t:'How well can you concentrate right now?',o:sc(0,10),lo:'0 = Very poorly',hi:'10 = Extremely well'},
+{s:'Perceived indoor air quality'},
+{id:'air_freshness',t:'How would you describe the air in this classroom right now?',o:L(['Very fresh','Fresh','Neither fresh nor stuffy','Stuffy','Very stuffy'])},
+{id:'odour_noticeable',t:'How noticeable is any unpleasant or unusual smell in this classroom right now?',o:L(['Not noticeable','Slightly noticeable','Moderately noticeable','Very noticeable','Extremely noticeable'])},
+{id:'prefer_fresher_air',t:'Would you prefer the air in this classroom to be fresher?',o:YNS},
+{s:'Thermal sensation'},
+{id:'thermal_sensation',t:'How do you feel about the temperature in this classroom right now?',o:[[-3,'−3 Cold'],[-2,'−2 Cool'],[-1,'−1 Slightly cool'],[0,'0 Neutral'],[1,'+1 Slightly warm'],[2,'+2 Warm'],[3,'+3 Hot']]},
+{s:'Environmental distraction'},
+{id:'distraction_level',t:'How much is the classroom environment distracting you right now?',o:FRQ},
+{id:'distraction_sources',multi:1,t:'Which of the following, if any, is distracting you right now? Select all that apply.',o:DIS,other:'Other',none:'None of these'},
+{s:'Perceived change during class',post:1},
+{id:'concentration_change',post:1,t:'Compared with before the class, how has your ability to concentrate changed?',o:CHG},
+{id:'environment_change',post:1,t:'Compared with the beginning of the class, how has the classroom environment changed overall?',o:CHG},
+{s:'Physical symptoms',note:'How much are you experiencing each of the following right now? 1 = Not at all · 2 = Slightly · 3 = To some extent · 4 = Quite a lot · 5 = Very much'},
+{id:'symptom_headache',t:'Headache',o:sc(1,5)},
+{id:'symptom_eye_irritation',t:'Eye dryness or irritation',o:sc(1,5)},
+{id:'symptom_nasal_irritation',t:'Nasal irritation',o:sc(1,5)},
+{id:'symptom_throat_irritation',t:'Throat dryness or irritation',o:sc(1,5)},
+{id:'symptom_unwell',t:'Feeling generally unwell',o:sc(1,5)}];
 function sQ(){
- const qs=Q.filter(q=>!q.post||S.tp==='post');
- show(`<h1>Questionnaire</h1>`+qs.map(q=>q.s?`<div class=sec>${q.s}</div>`:`<fieldset data-id="${q.id}"><legend>${esc(q.t)}</legend>${q.lo?`<small>${q.lo} · ${q.hi}</small>`:''}<div class=opts>${q.o.map((o,i)=>`<label><input type=radio name="${q.id}" value="${i}"><span>${esc(o[1])}</span></label>`).join('')}</div>${q.other?`<input type=text id=oth placeholder="Optional: please describe" maxlength=200 hidden>`:''}</fieldset>`).join('')+`<p id=e class=err></p><button class=btn id=go>Continue</button>`);
- const o4=$('#oth');if(o4)document.querySelectorAll('[name=q4_prev_activity]').forEach(r=>r.onchange=()=>o4.hidden=Q.find(q=>q.id==='q4_prev_activity').o[r.value][0]!=='Other');
+ const qs=Q.filter(q=>S.tp==='post'?!q.pre:!q.post);
+ show(`<h1>Questionnaire (${S.tp==='post'?'after class':'before class'})</h1><p class=note>Please answer based on how you feel right now, unless the question says otherwise.</p>`+qs.map(q=>q.s?`<div class=sec>${q.s}</div>${q.note?`<small>${q.note}</small>`:''}`:`<fieldset data-id="${q.id}"><legend>${esc(q.t)}</legend>${q.lo?`<small>${q.lo} · ${q.hi}</small>`:''}<div class=opts>${q.o.map((o,i)=>`<label><input type=${q.multi?'checkbox':'radio'} name="${q.id}" value="${i}"><span>${esc(o[1])}</span></label>`).join('')}</div>${q.other?`<input type=text placeholder="Optional: please describe" maxlength=200 hidden>`:''}</fieldset>`).join('')+`<p id=e class=err></p><button class=btn id=go>Continue</button>`);
+ const fsOf=q=>document.querySelector(`fieldset[data-id=${q.id}]`);
+ qs.forEach(q=>{if(!q.id)return;const fs=fsOf(q),ins=[...fs.querySelectorAll('input:not([type=text])')],ot=fs.querySelector('input[type=text]');
+  ins.forEach(inp=>inp.onchange=()=>{
+   if(q.multi&&inp.checked){const lab=q.o[inp.value][0];ins.forEach(x=>{if(x!==inp&&(lab===q.none||q.o[x.value][0]===q.none))x.checked=false})}
+   if(ot)ot.hidden=!ins.some(x=>x.checked&&q.o[x.value][0]===q.other)})});
  $('#go').onclick=()=>{const A={};let first=null;
-  for(const q of qs){if(q.s)continue;const fs=document.querySelector(`fieldset[data-id=${q.id}]`),c=fs.querySelector('input:checked');fs.classList.toggle('bad',!c);if(!c){first=first||fs;continue}A[q.id]=q.o[c.value][0]}
+  for(const q of qs){if(q.s)continue;const fs=fsOf(q),cs=[...fs.querySelectorAll('input:checked:not([type=text])')];fs.classList.toggle('bad',!cs.length);if(!cs.length){first=first||fs;continue}
+   A[q.id]=q.multi?cs.map(c=>q.o[c.value][0]):q.o[cs[0].value][0];
+   if(q.other){const sel=cs.some(c=>q.o[c.value][0]===q.other);A[q.id+'_other_text']=sel?(fs.querySelector('input[type=text]').value.trim()||null):null}}
   if(first){first.scrollIntoView({block:'center'});return $('#e').textContent='Please answer the highlighted questions.'}
-  A.q4_prev_activity_other_text=A.q4_prev_activity==='Other'?($('#oth').value.trim()||null):null;
   S.answers=A;S.qDone=new Date();sPvtIntro()};
 }
 // ---------- PVT ----------
@@ -131,7 +145,7 @@ function payload(){return{submission_id:S.submission_id,participant_id:S.pid,cla
  device_local_date:S.dev_date,device_local_time:S.dev_time,device_timestamp_local:S.dev_iso,device_timezone:S.tz,
  session_started_at:iso(S.started),questionnaire_completed_at:iso(S.qDone),client_submitted_at:iso(S.attempt||new Date()),
  consent_given:!!S.consent,schema_version:C.SCHEMA_VERSION,submission_status:'complete',
- metadata:{user_agent:navigator.userAgent,screen:`${screen.width}x${screen.height}`,language:navigator.language,attempt_count:S.attempts,clock_note:'Device clock; not independently verified'},
+ metadata:{user_agent:navigator.userAgent,screen:`${screen.width}x${screen.height}`,language:navigator.language,attempt_count:S.attempts,questionnaire_version:'2',clock_note:'Device clock; not independently verified'},
  questionnaire:S.answers,pvt:S.pvt,stroop:S.stroop}}
 function sDone(){const p=S.pvt.summary,s=S.stroop.summary;
  show(`<h1>All tasks complete</h1><div class=card><b>Summary</b><br>Questionnaire: ${Object.keys(S.answers).length} answers<br>Reaction test: ${p.n_stimuli} stimuli, median ${p.median_rt_ms??'–'} ms<br>Colour task: ${s.n_correct}/${s.n_trials} correct</div>

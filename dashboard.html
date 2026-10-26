@@ -1,0 +1,47 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Researcher dashboard</title>
+<style>body{font:15px system-ui,sans-serif;margin:0;padding:12px;background:#f4f6f8}input,select,button{font-size:15px;padding:8px;margin:3px;border-radius:6px;border:1px solid #889}button{background:#0b6bcb;color:#fff;border:0;min-height:40px}
+table{border-collapse:collapse;width:100%;background:#fff}td,th{border-bottom:1px solid #ddd;padding:6px;text-align:left}tr.r{cursor:pointer}tr.r:hover{background:#e8f1fb}.w{overflow-x:auto}pre{background:#fff;padding:8px;overflow:auto;max-height:300px}.err{color:#b71c1c}[hidden]{display:none}</style></head><body>
+<h2>Researcher dashboard</h2>
+<div id=login><input id=em type=email placeholder=Email autocomplete=username><input id=pw type=password placeholder=Password autocomplete=current-password><button id=li>Sign in</button></div>
+<div id=main hidden>
+<div><input id=fp placeholder="Participant ID"><select id=fc><option value="">All classrooms</option></select><select id=ft><option value="">Pre + post</option><option>pre</option><option>post</option></select>
+ From <input id=f1 type=date> to <input id=f2 type=date> <button id=rl>Reload</button><button id=lo>Sign out</button></div>
+<div><button id=d1>Sessions CSV</button><button id=d2>Sessions JSON</button><button id=d3>PVT trials CSV</button><button id=d4>Stroop trials CSV</button></div>
+<p id=cnt></p><p id=msg class=err></p><div class=w><table><thead><tr><th>Received (server)</th><th>Participant</th><th>Room</th><th>Time pt</th><th>Device date/time</th><th>PVT trials</th><th>Stroop trials</th></tr></thead><tbody id=tb></tbody></table></div>
+<h3>Selected session</h3><div id=det>Click a row.</div></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script><script src="config.js"></script>
+<script>
+const C=APP_CONFIG,$=s=>document.querySelector(s),sb=supabase.createClient(C.SUPABASE_URL,C.SUPABASE_KEY);let all=[],cur=[];
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+$('#fc').innerHTML+=C.CLASSROOMS.map(r=>`<option>${esc(r)}</option>`).join('');
+$('#li').onclick=async()=>{const {error}=await sb.auth.signInWithPassword({email:$('#em').value,password:$('#pw').value});if(error)return alert('Login failed: '+error.message);start()};
+$('#lo').onclick=async()=>{await sb.auth.signOut();location.reload()};$('#rl').onclick=load;
+async function start(){const {data}=await sb.auth.getSession();if(!data.session)return;$('#login').hidden=true;$('#main').hidden=false;load()}
+async function load(){$('#msg').textContent='Loading…';all=[];
+ for(let f=0;;f+=1000){const {data,error}=await sb.from('assessment_sessions').select('*').order('created_at',{ascending:false}).range(f,f+999);
+  if(error){$('#msg').textContent='Query failed: '+error.message;return}all=all.concat(data);if(data.length<1000)break}
+ $('#msg').textContent=all.length?'':'No records visible. If you expect data, confirm this user is in the researchers table (see README).';render()}
+['fp','fc','ft','f1','f2'].forEach(i=>$('#'+i).oninput=render);
+function render(){const p=$('#fp').value.trim().toLowerCase(),c=$('#fc').value,t=$('#ft').value,a=$('#f1').value,b=$('#f2').value;
+ cur=all.filter(r=>(!p||r.participant_id.toLowerCase().includes(p))&&(!c||r.classroom_id===c)&&(!t||r.assessment_timepoint===t)&&(!a||r.device_local_date>=a)&&(!b||r.device_local_date<=b));
+ $('#cnt').textContent=`${cur.length} shown of ${all.length} submitted sessions`;
+ $('#tb').innerHTML=cur.slice(0,200).map((r,i)=>`<tr class=r data-i=${i}><td>${esc(r.created_at)}</td><td>${esc(r.participant_id)}</td><td>${esc(r.classroom_id)}</td><td>${r.assessment_timepoint}</td><td>${esc(r.device_timestamp_local)}</td><td>${r.pvt.trials.length}</td><td>${r.stroop.trials.length}</td></tr>`).join('')||'<tr><td colspan=7>No records.</td></tr>';
+ document.querySelectorAll('tr.r').forEach(tr=>tr.onclick=()=>detail(cur[tr.dataset.i]))}
+const tbl=a=>{if(!a.length)return'<i>none</i>';const k=[...new Set(a.flatMap(Object.keys))];return `<div class=w><table><tr>${k.map(x=>`<th>${x}</th>`).join('')}</tr>${a.map(r=>`<tr>${k.map(x=>`<td>${esc(r[x])}</td>`).join('')}</tr>`).join('')}</table></div>`};
+function detail(r){$('#det').innerHTML=`<b>${esc(r.participant_id)}</b> · ${esc(r.classroom_id)} · ${r.assessment_timepoint}<h4>Questionnaire</h4><pre>${esc(JSON.stringify(r.questionnaire,null,1))}</pre><h4>PVT summary</h4><pre>${esc(JSON.stringify(r.pvt.summary,null,1))}</pre><h4>PVT trials</h4>${tbl(r.pvt.trials)}<h4>Stroop summary</h4><pre>${esc(JSON.stringify(r.stroop.summary,null,1))}</pre><h4>Stroop trials</h4>${tbl(r.stroop.trials)}<h4>Metadata</h4><pre>${esc(JSON.stringify(r.metadata,null,1))}</pre>`}
+// ---- CSV (see README for flattening rules) ----
+const q=v=>{if(v==null)return'';if(typeof v==='object')v=JSON.stringify(v);v=String(v);if(/^[=+\-@\t\r]/.test(v)&&isNaN(v))v="'"+v;return /[",\n\r]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};
+const csv=(cols,rs)=>'\ufeff'+[cols.join(','),...rs.map(r=>cols.map(c=>q(r[c])).join(','))].join('\n');
+const dl=(n,t,m)=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([t],{type:m}));a.download=n;a.click()};
+const BASE=['id','submission_id','participant_id','classroom_id','assessment_timepoint','session_code','device_local_date','device_local_time','device_timestamp_local','device_timezone','session_started_at','questionnaire_completed_at','client_submitted_at','created_at','schema_version'];
+const base=r=>Object.fromEntries(BASE.map(k=>[k,r[k]]));
+const stamp=()=>new Date().toISOString().slice(0,10);
+function empty(){if(!cur.length){alert('Nothing to export.');return true}}
+$('#d1').onclick=()=>{if(empty())return;const rows=cur.map(r=>{const o=base(r);for(const[k,v]of Object.entries(r.questionnaire))o['q_'+k]=Array.isArray(v)?v.join(' | '):v;
+ for(const[k,v]of Object.entries(r.pvt.summary||{}))o['pvt_'+k]=v;for(const[k,v]of Object.entries(r.stroop.summary||{}))o['stroop_'+k]=v;o.pvt_started_at=r.pvt.started_at;o.pvt_ended_at=r.pvt.ended_at;o.stroop_started_at=r.stroop.started_at;o.stroop_ended_at=r.stroop.ended_at;return o});
+ dl(`sessions_${stamp()}.csv`,csv([...new Set(rows.flatMap(Object.keys))],rows),'text/csv')};
+$('#d2').onclick=()=>{if(!empty())dl(`sessions_${stamp()}.json`,JSON.stringify(cur,null,1),'application/json')};
+const trials=k=>{const rows=cur.flatMap(r=>r[k].trials.map(t=>({...base(r),...t})));dl(`${k}_trials_${stamp()}.csv`,csv([...new Set(rows.flatMap(Object.keys))],rows),'text/csv')};
+$('#d3').onclick=()=>{if(!empty())trials('pvt')};$('#d4').onclick=()=>{if(!empty())trials('stroop')};
+start();
+</script></body></html>
