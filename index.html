@@ -1,0 +1,156 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Classroom Air Quality Study</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font:18px/1.45 system-ui,sans-serif;background:#f4f6f8;color:#14212b}
+main{max-width:640px;margin:0 auto;padding:16px}h1{font-size:1.4rem}.card{background:#fff;border-radius:12px;padding:14px;margin:12px 0;box-shadow:0 1px 3px #0002}
+.btn{display:block;width:100%;min-height:56px;font-size:1.1rem;border:0;border-radius:12px;background:#0b6bcb;color:#fff;margin:14px 0}.btn:disabled{background:#9ab}
+.btn.alt{background:#e3e9ef;color:#14212b}input[type=text],select{width:100%;min-height:50px;font-size:1.05rem;padding:8px;border:1px solid #889;border-radius:8px;margin:4px 0 10px}
+fieldset{border:0;background:#fff;border-radius:12px;margin:12px 0;padding:12px}fieldset.bad{outline:3px solid #c62828}legend{font-weight:600;padding:0}
+.opts{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}.opts label{flex:1 1 auto;min-width:56px}.opts input{position:absolute;opacity:0}
+.opts span{display:block;min-height:52px;padding:12px 10px;text-align:center;border:2px solid #9ab;border-radius:10px;background:#fff}
+.opts input:checked+span{background:#0b6bcb;color:#fff;border-color:#0b6bcb}.opts input:focus-visible+span{outline:3px solid #f90}
+.sec{font-weight:700;color:#0b6bcb;margin-top:22px}small{color:#456}.note{color:#245}.err{color:#b71c1c;font-weight:600}.ok{color:#1b5e20;font-weight:700}
+.pad{height:55vh;display:flex;align-items:center;justify-content:center;font-size:2rem;border-radius:16px;background:#cfd8dc;touch-action:manipulation;user-select:none}.pad.go{background:#c62828;color:#fff}
+.hud{text-align:center;font-size:1.2rem}.word{font-size:4rem;font-weight:800;text-align:center;margin:40px 0;min-height:80px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.grid button{min-height:70px;font-size:1.2rem;border-radius:12px;border:2px solid #456;background:#fff}
+</style></head><body><main id="app"></main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="config.js"></script>
+<script>
+const C=window.APP_CONFIG,app=document.getElementById('app'),$=s=>document.querySelector(s),pad=n=>String(n).padStart(2,'0');
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function iso(d=new Date()){const o=-d.getTimezoneOffset(),a=Math.abs(o);return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${String(d.getMilliseconds()).padStart(3,'0')}${o>=0?'+':'-'}${pad(Math.floor(a/60))}:${pad(a%60)}`}
+const dDate=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`,dTime=d=>`${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+function uuid(){if(crypto.randomUUID)return crypto.randomUUID();const b=crypto.getRandomValues(new Uint8Array(16));b[6]=b[6]&15|64;b[8]=b[8]&63|128;const h=[...b].map(x=>x.toString(16).padStart(2,'0')).join('');return `${h.slice(0,8)}-${h.slice(8,12)}-${h.slice(12,16)}-${h.slice(16,20)}-${h.slice(20)}`}
+const S={submission_id:uuid(),answers:{},saved:false,attempts:0};
+let sb=null;try{sb=supabase.createClient(C.SUPABASE_URL,C.SUPABASE_KEY)}catch(e){console.error('Supabase client failed to load')}
+const show=h=>{app.innerHTML=h;window.scrollTo(0,0)};
+window.addEventListener('beforeunload',e=>{if(S.started&&!S.saved){e.preventDefault();e.returnValue=''}});
+const med=a=>{if(!a.length)return null;const s=[...a].sort((x,y)=>x-y),m=s.length>>1;return s.length%2?s[m]:(s[m-1]+s[m])/2};
+const mean=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:null,r1=x=>x==null?null:Math.round(x*10)/10;
+
+// ---------- Screen 1: info + consent ----------
+function sInfo(){
+ const bad=!sb||/YOUR_/.test(C.SUPABASE_URL+C.SUPABASE_KEY);
+ show(`<h1>${esc(C.STUDY_TITLE)}</h1>${bad?'<p class=err>Setup incomplete: Supabase URL/key not configured in config.js. Data cannot be saved.</p>':''}<div class=card>${C.CONSENT_HTML}</div>
+ <label><input type=checkbox id=ok> I have read this information and agree to take part.</label><button class=btn id=go disabled>Continue</button>`);
+ $('#ok').onchange=e=>$('#go').disabled=!e.target.checked;$('#go').onclick=()=>{S.consent=true;sDetails()};
+}
+// ---------- Screen 2: session details ----------
+function sDetails(){
+ const tz=Intl.DateTimeFormat().resolvedOptions().timeZone||'unknown';
+ show(`<h1>Session details</h1><div class=card><label>Participant ID (no names or roll numbers)<input type=text id=pid maxlength=40 autocomplete=off placeholder="e.g. P017"></label>
+ <label>Classroom<select id=room><option value="">Select…</option>${C.CLASSROOMS.map(r=>`<option>${esc(r)}</option>`).join('')}</select></label>
+ <div>Assessment time point</div><div class=opts><label><input type=radio name=tp value=pre><span>Pre-class</span></label><label><input type=radio name=tp value=post><span>Post-class</span></label></div>
+ <label>Session code (optional)<input type=text id=code maxlength=40 autocomplete=off></label></div>
+ <div class=card><b>Date:</b> <span id=dd></span><br><b>Time:</b> <span id=tt></span><br><b>Time zone:</b> ${esc(tz)}</div>
+ <p class=note>The date and time above are filled automatically using this phone or computer’s settings. They will be saved with your assessment. Please check that your device date, time and time zone are correct before continuing.</p>
+ <p id=e class=err></p><button class=btn id=go>Continue</button>`);
+ const t=setInterval(()=>{const n=new Date();$('#dd').textContent=dDate(n);$('#tt').textContent=dTime(n)},500);$('#dd').textContent=dDate(new Date());$('#tt').textContent=dTime(new Date());
+ $('#go').onclick=()=>{const pid=$('#pid').value.trim(),room=$('#room').value,tp=(document.querySelector('[name=tp]:checked')||{}).value;
+  if(!/^[A-Za-z0-9_-]{3,40}$/.test(pid))return $('#e').textContent='Participant ID: 3–40 letters, numbers, - or _ only.';
+  if(!room)return $('#e').textContent='Please select a classroom.';if(!tp)return $('#e').textContent='Please select pre-class or post-class.';
+  clearInterval(t);const n=new Date();Object.assign(S,{pid,room,tp,code:$('#code').value.trim()||null,tz,started:n,dev_date:dDate(n),dev_time:dTime(n),dev_iso:iso(n)});sQ()};
+}
+// ---------- Questionnaire ----------
+const L=a=>a.map(x=>[x,x]),sc=(a,b)=>Array.from({length:b-a+1},(_,i)=>[a+i,String(a+i)]),YN=L(['Yes','No']);
+const FRQ=L(['Not at all','Slightly','Moderately','Very much','Extremely']),CHG=L(['Much worse','Slightly worse','No change','Slightly better','Much better']);
+const Q=[{s:'A. Sleep and recent activity'},
+{id:'q1_sleep_duration',t:'Approximately how long did you sleep last night?',o:L(['Less than 5 hours','5 to less than 6 hours','6 to less than 7 hours','7–8 hours','More than 8 hours'])},
+{id:'q2_caffeine_past_4h',t:'Have you consumed a caffeinated drink in the past four hours?',o:YN},
+{id:'q3_prev_class_immediate',t:'Did you attend another class immediately before this one?',o:YN},
+{id:'q4_prev_activity',t:'What were you doing immediately before entering this classroom?',o:L(['Attending another class','Walking or travelling','Sitting or resting','Studying or working','Other']),other:'Other'},
+{s:'B. Current subjective state'},
+{id:'q5_sleepiness_1_9',t:'How sleepy do you feel right now?',o:sc(1,9),lo:'1 = not sleepy',hi:'9 = extremely sleepy'},
+{id:'q6_mental_fatigue_0_10',t:'How mentally tired do you feel right now?',o:sc(0,10),lo:'0 = not at all',hi:'10 = extremely'},
+{id:'q7_concentration_0_10',t:'How well can you concentrate right now?',o:sc(0,10),lo:'0 = very poorly',hi:'10 = extremely well'},
+{s:'C. Perceived indoor air quality'},
+{id:'q8_air_freshness',t:'How would you describe the air in this classroom right now?',o:L(['Very fresh','Fresh','Neither fresh nor stuffy','Stuffy','Very stuffy'])},
+{id:'q9_prefer_fresher_air',t:'Would you prefer the air in this classroom to be fresher?',o:YN},
+{id:'q10_odour_noticeable',t:'How noticeable is any unpleasant or unusual smell?',o:L(['Not noticeable','Slightly noticeable','Moderately noticeable','Very noticeable','Extremely noticeable'])},
+{s:'D. Thermal sensation'},
+{id:'q11_thermal_sensation',t:'How do you feel about the temperature in this classroom?',o:[[-3,'−3 Cold'],[-2,'−2 Cool'],[-1,'−1 Slightly cool'],[0,'0 Neutral'],[1,'+1 Slightly warm'],[2,'+2 Warm'],[3,'+3 Hot']]},
+{s:'E. Environmental distraction'},
+{id:'q12_env_distraction',t:'How much is the classroom environment distracting you?',o:FRQ},
+{s:'F. Current affect'},
+{id:'q13_activation_1_9',t:'How activated or alert do you feel right now?',o:sc(1,9),lo:'1 = very low',hi:'9 = very high'},
+{id:'q14_valence_1_9',t:'How pleasant or unpleasant do you feel right now?',o:sc(1,9),lo:'1 = very unpleasant (5 = neutral)',hi:'9 = very pleasant'},
+{s:'G. After-class questions',post:1},
+{id:'q15_concentration_change',t:'Compared with before the class, how has your ability to concentrate changed?',o:CHG,post:1},
+{id:'q16_environment_change',t:'Compared with the beginning of class, how has the classroom environment changed overall?',o:CHG,post:1}];
+function sQ(){
+ const qs=Q.filter(q=>!q.post||S.tp==='post');
+ show(`<h1>Questionnaire</h1>`+qs.map(q=>q.s?`<div class=sec>${q.s}</div>`:`<fieldset data-id="${q.id}"><legend>${esc(q.t)}</legend>${q.lo?`<small>${q.lo} · ${q.hi}</small>`:''}<div class=opts>${q.o.map((o,i)=>`<label><input type=radio name="${q.id}" value="${i}"><span>${esc(o[1])}</span></label>`).join('')}</div>${q.other?`<input type=text id=oth placeholder="Optional: please describe" maxlength=200 hidden>`:''}</fieldset>`).join('')+`<p id=e class=err></p><button class=btn id=go>Continue</button>`);
+ const o4=$('#oth');if(o4)document.querySelectorAll('[name=q4_prev_activity]').forEach(r=>r.onchange=()=>o4.hidden=Q.find(q=>q.id==='q4_prev_activity').o[r.value][0]!=='Other');
+ $('#go').onclick=()=>{const A={};let first=null;
+  for(const q of qs){if(q.s)continue;const fs=document.querySelector(`fieldset[data-id=${q.id}]`),c=fs.querySelector('input:checked');fs.classList.toggle('bad',!c);if(!c){first=first||fs;continue}A[q.id]=q.o[c.value][0]}
+  if(first){first.scrollIntoView({block:'center'});return $('#e').textContent='Please answer the highlighted questions.'}
+  A.q4_prev_activity_other_text=A.q4_prev_activity==='Other'?($('#oth').value.trim()||null):null;
+  S.answers=A;S.qDone=new Date();sPvtIntro()};
+}
+// ---------- PVT ----------
+function sPvtIntro(){show(`<h1>Task 1: Reaction test (2 minutes)</h1><div class=card><p>A grey box will turn <b>red</b> at random times. Tap it <b>as fast as you can</b> when it turns red. Do not tap while it is grey.</p><p>The test lasts 2 minutes. Keep your eyes on the box.</p></div><button class=btn id=go>Start</button>`);$('#go').onclick=runPVT}
+function runPVT(){
+ const P=C.PVT,tr=[];let n=0,on=false,t=0,w='',wt,to,done=false;const t0=performance.now(),startISO=iso();
+ show(`<div class=hud>Time left: <b id=cd>${Math.ceil(P.DURATION_MS/1000)} s</b></div><div id=pad class=pad><span id=pv>Wait…</span></div>`);
+ const padEl=$('#pad'),pv=$('#pv');
+ const sched=()=>{wt=setTimeout(stim,P.ISI_MIN_MS+Math.random()*(P.ISI_MAX_MS-P.ISI_MIN_MS))};
+ const stim=()=>{n++;on=true;padEl.classList.add('go');pv.textContent='TAP!';t=performance.now();w=iso();to=setTimeout(()=>rec(null,'missed',null),P.MAX_RESPONSE_MS)};
+ const rec=(rt,out,resp)=>{clearTimeout(to);tr.push({event_type:'stimulus',trial_number:n,stimulus_time_local:w,stimulus_onset_ms:r1(t-t0),response_time_local:resp,reaction_time_ms:rt,outcome:out});on=false;padEl.classList.remove('go');pv.textContent='Wait…';if(!done)sched()};
+ padEl.onpointerdown=e=>{e.preventDefault();const now=performance.now();
+  if(on){const rt=r1(now-t);rec(rt,rt<P.FALSE_START_MS?'false_start':rt>P.LAPSE_MS?'lapse':'valid',iso())}
+  else tr.push({event_type:'early_response',trial_number:null,next_trial_number:n+1,stimulus_time_local:null,stimulus_onset_ms:null,response_time_local:iso(),reaction_time_ms:null,outcome:'early_response'})};
+ const end=()=>{if(done)return;done=true;clearTimeout(wt);clearInterval(iv);if(on)rec(null,'incomplete_at_end',null);padEl.onpointerdown=null;
+  const st=tr.filter(x=>x.event_type==='stimulus'),resp=st.filter(x=>x.reaction_time_ms!=null&&x.outcome!=='false_start'),rts=resp.map(x=>x.reaction_time_ms);
+  S.pvt={started_at:startISO,ended_at:iso(),timing_source:'performance.now()',config:{...P},trials:tr,
+   summary:{n_stimuli:st.length,n_valid:st.filter(x=>x.outcome==='valid').length,n_lapses:st.filter(x=>x.outcome==='lapse').length,n_false_starts:st.filter(x=>x.outcome==='false_start').length,n_early_responses:tr.filter(x=>x.event_type==='early_response').length,n_missed:st.filter(x=>x.outcome==='missed').length,n_incomplete_at_end:st.filter(x=>x.outcome==='incomplete_at_end').length,mean_rt_ms:r1(mean(rts)),median_rt_ms:r1(med(rts))}};
+  sStroopIntro()};
+ const iv=setInterval(()=>{const left=P.DURATION_MS-(performance.now()-t0);$('#cd').textContent=Math.max(0,Math.ceil(left/1000))+' s';if(left<=0)end()},200);sched();
+}
+// ---------- Stroop ----------
+function sStroopIntro(){show(`<h1>Task 2: Colour task</h1><div class=card><p>A colour word appears in coloured ink. Tap the button for the <b>ink colour</b>, not what the word says. Be fast and accurate. There are ${C.STROOP.N_TRIALS} trials.</p></div><button class=btn id=go>Start</button>`);$('#go').onclick=runStroop}
+function runStroop(){
+ const K=C.STROOP,names=Object.keys(K.COLORS),list=[],half=K.STROOP_N||K.N_TRIALS/2;
+ for(let i=0;i<K.N_TRIALS;i++){const word=names[i%4];if(i<half)list.push({word,ink:word,cond:'congruent'});else{const o=names.filter(x=>x!==word);list.push({word,ink:o[Math.floor(Math.random()*o.length)],cond:'incongruent'})}}
+ for(let i=list.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[list[i],list[j]]=[list[j],list[i]]}
+ const tr=[],t0=performance.now(),startISO=iso();let i=0;
+ const next=()=>{if(i>=list.length)return fin();const x=list[i];let t=0,w='',locked=false;
+  show(`<div class=hud>Trial ${i+1} / ${list.length}</div><div class=word style="color:${K.COLORS[x.ink]}">${x.word}</div><div class=grid>${names.map(c=>`<button data-c=${c}>${c}</button>`).join('')}</div>`);
+  t=performance.now();w=iso();
+  document.querySelectorAll('.grid button').forEach(b=>b.onpointerdown=e=>{e.preventDefault();if(locked)return;locked=true;const now=performance.now(),c=b.dataset.c;
+   tr.push({trial_number:i+1,word:x.word,ink_colour:x.ink,congruency:x.cond,response:c,correct:c===x.ink,reaction_time_ms:r1(now-t),stimulus_time_local:w,response_time_local:iso()});i++;
+   show('<div class=word>+</div>');setTimeout(next,K.BLANK_MS)})};
+ const fin=()=>{const rt=a=>a.map(x=>x.reaction_time_ms),ok=tr.filter(x=>x.correct),cg=ok.filter(x=>x.congruency==='congruent'),ic=ok.filter(x=>x.congruency==='incongruent');
+  S.stroop={started_at:startISO,ended_at:iso(),timing_source:'performance.now()',config:{N_TRIALS:K.N_TRIALS,BLANK_MS:K.BLANK_MS},trials:tr,
+   summary:{n_trials:tr.length,n_correct:ok.length,accuracy:r1(100*ok.length/tr.length),median_rt_correct_ms:r1(med(rt(ok))),median_rt_congruent_ms:r1(med(rt(cg))),median_rt_incongruent_ms:r1(med(rt(ic)))}};sDone()};
+ next();
+}
+// ---------- Summary + submission ----------
+function payload(){return{submission_id:S.submission_id,participant_id:S.pid,classroom_id:S.room,assessment_timepoint:S.tp,session_code:S.code,
+ device_local_date:S.dev_date,device_local_time:S.dev_time,device_timestamp_local:S.dev_iso,device_timezone:S.tz,
+ session_started_at:iso(S.started),questionnaire_completed_at:iso(S.qDone),client_submitted_at:iso(S.attempt||new Date()),
+ consent_given:!!S.consent,schema_version:C.SCHEMA_VERSION,submission_status:'complete',
+ metadata:{user_agent:navigator.userAgent,screen:`${screen.width}x${screen.height}`,language:navigator.language,attempt_count:S.attempts,clock_note:'Device clock; not independently verified'},
+ questionnaire:S.answers,pvt:S.pvt,stroop:S.stroop}}
+function sDone(){const p=S.pvt.summary,s=S.stroop.summary;
+ show(`<h1>All tasks complete</h1><div class=card><b>Summary</b><br>Questionnaire: ${Object.keys(S.answers).length} answers<br>Reaction test: ${p.n_stimuli} stimuli, median ${p.median_rt_ms??'–'} ms<br>Colour task: ${s.n_correct}/${s.n_trials} correct</div>
+ <p class=note>Your answers are not saved until you press Submit.</p><p id=msg class=note></p><button class=btn id=sub>Submit</button><button class="btn alt" id=bk>Download backup file (optional)</button>`);
+ $('#sub').onclick=submit;$('#bk').onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(payload(),null,1)],{type:'application/json'}));a.download=`backup_${S.pid}_${S.tp}_${S.submission_id.slice(0,8)}.json`;a.click()}}
+function explain(e){const c=e.code||'',m=e.message||'';
+ if(c==='23505')return'';if(c==='42501')return'Save refused by database security rules (RLS). Tell the researcher.';
+ if(c==='42P01'||c==='PGRST205')return'Database table not found. Tell the researcher (schema not set up).';
+ if(c==='PGRST204'||c==='42703')return'Database column mismatch. Tell the researcher.';
+ if(c==='23514'||c==='22P02'||c==='22007'||c==='22008')return'The database rejected the data format. Tell the researcher. Use the backup file.';
+ if(/Invalid API key|JWT|apikey/i.test(m))return'Invalid project key in configuration. Tell the researcher.';
+ if(/fetch|network|Load failed/i.test(m))return'Could not reach the server. Check your internet and press Submit again (safe: no duplicate will be created).';
+ return'Saving failed. Press Submit to retry, or download the backup file.'}
+async function submit(){const b=$('#sub'),m=$('#msg');b.disabled=true;m.className='note';m.textContent='Saving…';S.attempts++;S.attempt=new Date();
+ try{if(!sb)throw{message:'Supabase library did not load (network?)'};
+  const {error}=await sb.from('assessment_sessions').insert(payload());   // no .select(): anonymous users can insert but never read
+  if(error)throw error;saved('Your assessment has been saved in the database. Thank you!')}
+ catch(e){if(e.code==='23505')return saved('This assessment was already saved earlier. Thank you!');
+  console.error('Save failed:',e.code||'',e.message||String(e));m.className='err';m.textContent=explain(e);b.disabled=false}}
+function saved(msg){S.saved=true;show(`<h1 class=ok>✔ Saved</h1><div class=card>${msg}</div><p class=note>Reference: ${S.submission_id.slice(0,8)}</p>`)}
+sInfo();
+</script></body></html>
